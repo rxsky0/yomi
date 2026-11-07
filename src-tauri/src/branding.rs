@@ -3,7 +3,7 @@
 
 macro_rules! github_repo {
     () => {
-        "YOUR_GITHUB_USERNAME/yomi"
+        "rxsky0/yomi"
     };
 }
 

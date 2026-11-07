@@ -1,5 +1,5 @@
 // Set with `npm run set-repo -- your-name/yomi` (also updates src-tauri/src/branding.rs).
-export const REPO = "https://github.com/YOUR_GITHUB_USERNAME/yomi";
+export const REPO = "https://github.com/rxsky0/yomi";
 export const RELEASES_PAGE = `${REPO}/releases`;
 
 // Invite link to your own Discord server. Leave empty to hide the "Join the Discord" buttons.
