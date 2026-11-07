@@ -1,7 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![recursion_limit = "256"]
 
+mod branding;
+mod chars;
 mod config;
+mod export;
 mod discord;
 mod engine;
 mod emulators;
@@ -118,6 +121,11 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .name("engine".into())
         .spawn(move || engine.run(command_queue))?;
 
+    let for_chars = Arc::clone(&shared);
+    std::thread::Builder::new()
+        .name("chars".into())
+        .spawn(move || chars::run(for_chars))?;
+
     let for_hotkey = Arc::clone(&shared);
     std::thread::Builder::new()
         .name("hotkey".into())
@@ -157,6 +165,10 @@ fn import_old_data(data_dir: &std::path::Path) {
         return;
     };
     let appdata = PathBuf::from(appdata);
+    // Copy (never move) an existing Shiori library so both apps keep working.
+    if Config::migrate_from(data_dir, &appdata.join("moe.lenn.shiori")) {
+        return;
+    }
     Config::migrate_from(data_dir, &appdata.join("moe.lenn.vnrpc-tauri"));
     let source = appdata.join("VisualNovelRPC");
     if source.is_dir() {
@@ -255,6 +267,9 @@ fn main() {
             commands::data::check_update,
             commands::data::install_update,
             commands::data::release_notes,
+            commands::data::export_reading,
+            commands::library::add_note,
+            commands::library::remove_note,
             commands::popups::mascot_info,
             commands::popups::mascot_poke,
             commands::popups::mascot_open_app,

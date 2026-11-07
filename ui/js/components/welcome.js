@@ -38,7 +38,7 @@ export async function welcome() {
   });
 
   await openDialog({
-    title: "Welcome to Shiori RPC",
+    title: "Welcome to Yomi",
     body: el(
       "div",
       { class: "welcome" },

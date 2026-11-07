@@ -63,11 +63,11 @@ const VOICE_MOMENTS = [
 
 const CHATTER_MINUTES = [0, 1, 3, 5, 10, 15, 30];
 
-const PACK_EXTENSION = "shiorimascot";
+const PACK_EXTENSION = "yomimascot";
 const MASCOT_FILTERS = [
-  { name: "Images or shared mascots", extensions: ["png", "webp", "gif", PACK_EXTENSION] },
+  { name: "Images or shared mascots", extensions: ["png", "webp", "gif", PACK_EXTENSION, "shiorimascot"] },
 ];
-const PACK_FILTERS = [{ name: "Shared mascot", extensions: [PACK_EXTENSION] }];
+const PACK_FILTERS = [{ name: "Shared mascot", extensions: [PACK_EXTENSION, "shiorimascot"] }];
 const AUDIO_FILTERS = [
   { name: "Audio", extensions: ["mp3", "wav", "ogg", "m4a", "opus", "flac"] },
 ];

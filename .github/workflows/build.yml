@@ -1,0 +1,86 @@
+name: Build
+
+# Every push and pull request: run the tests and build the app on Windows.
+# Pushing a tag like v1.0.1 also publishes a GitHub release with yomi.exe and
+# yomi_setup.exe, which is what the app's built-in updater downloads.
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)
+          if [ "v$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} doesn't match version $version in Cargo.toml, tauri.conf.json and package.json. A mismatch would make the updater loop."
+            exit 1
+          fi
+          if grep -q 'YOUR_GITHUB_USERNAME' src-tauri/src/branding.rs; then
+            echo "::error::Run 'npm run set-repo -- your-name/yomi' and commit before releasing, or the app can't find its updates."
+            exit 1
+          fi
+
+      - name: Install JavaScript tools
+        run: npm ci
+
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: Clippy (advice only)
+        working-directory: src-tauri
+        continue-on-error: true
+        run: cargo clippy --locked
+
+      - name: Build the app and installer
+        run: npm run build
+
+      - name: Collect the files
+        shell: bash
+        run: |
+          mkdir dist
+          cp src-tauri/target/release/yomi.exe dist/yomi.exe
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe dist/yomi_setup.exe
+          cp src-tauri/target/release/yomi.pdb dist/yomi.pdb 2>/dev/null || true
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yomi-windows
+          path: dist/
+
+      # yomi.exe goes first: the updater picks the portable exe from each release.
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/yomi.exe
+            dist/yomi_setup.exe
+          generate_release_notes: true

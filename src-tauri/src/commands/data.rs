@@ -76,3 +76,25 @@ pub async fn install_update(
 pub async fn release_notes() -> Result<Vec<Notes>, String> {
     blocking(updater::release_notes).await
 }
+
+/// Reading history as CSV or JSON. `format` is "csv", "csv_daily" or "json".
+#[tauri::command]
+pub async fn export_reading(
+    shared: SharedState<'_>,
+    path: String,
+    format: String,
+) -> Result<usize, String> {
+    let shared = Arc::clone(&shared);
+    blocking(move || {
+        let rows = crate::export::rows(&shared.config.lock().unwrap());
+        let text = match format.as_str() {
+            "json" => crate::export::json(&rows)?,
+            "csv" => crate::export::library_csv(&rows),
+            "csv_daily" => crate::export::daily_csv(&rows),
+            other => return Err(format!("unknown export format {other}")),
+        };
+        std::fs::write(&path, text).map_err(|e| e.to_string())?;
+        Ok(rows.len())
+    })
+    .await
+}

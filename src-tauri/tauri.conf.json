@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Shiori RPC",
-  "version": "2.2.4",
-  "identifier": "moe.lenn.shiori",
+  "productName": "Yomi",
+  "version": "1.0.0",
+  "identifier": "app.yomi.desktop",
   "build": {
     "frontendDist": "../ui"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Shiori RPC",
+        "title": "Yomi",
         "width": 1200,
         "height": 760,
         "minWidth": 900,

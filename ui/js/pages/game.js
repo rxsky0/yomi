@@ -66,6 +66,14 @@ const TEMPLATE = `
           Compared with the average length on VNDB. Your reading speed and routes change it.
         </div>
       </div>
+
+      <div class="card" data-id="chars-card" hidden>
+        <div class="card-title">
+          <b>Characters read</b>
+          <span class="muted" data-id="chars-total"></span>
+        </div>
+        <div class="hint-text" data-id="chars-detail"></div>
+      </div>
     </div>
 
     <div class="col">
@@ -137,6 +145,21 @@ const TEMPLATE = `
     <div class="hint-text" data-id="shots-hint"></div>
   </div>
 
+  <div class="card notes-card">
+    <div class="card-title">
+      <div class="row"><b>Notes</b><span class="muted" data-id="note-count"></span></div>
+    </div>
+    <div class="note-add">
+      <textarea
+        data-id="note-text"
+        rows="2"
+        placeholder="A thought, a line you liked, where you stopped… (Ctrl+Enter to add)"
+      ></textarea>
+      <button class="btn" data-id="note-save">Add note</button>
+    </div>
+    <div class="note-list" data-id="notes"></div>
+  </div>
+
   <div class="game-footer">
     <button class="btn" data-id="play">▶  Play</button>
     <button
@@ -149,7 +172,7 @@ const TEMPLATE = `
     <button
       class="btn secondary"
       data-id="shortcut"
-      title="Starts the game with the options above (Locale Emulator, Steam…) and Shiori RPC"
+      title="Starts the game with the options above (Locale Emulator, Steam…) and Yomi"
     >
       Desktop shortcut
     </button>
@@ -182,6 +205,13 @@ function build(container) {
   part("vote").onchange = saveVote;
 
   part("edit-total").onclick = editTotal;
+  part("note-save").onclick = addNote;
+  part("note-text").onkeydown = (event) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      addNote();
+    }
+  };
 
   subscribe("library", (change) => isShown() && (!change?.key || change.key === key) && load());
   subscribe("screenshots", (change) => isShown() && change?.key === key && load());
@@ -194,6 +224,7 @@ function isShown() {
 async function showPage(params) {
   if (params.key !== key) {
     range = "days";
+    part("note-text").value = "";
   }
   key = params.key;
   await load();
@@ -218,6 +249,8 @@ async function load() {
   renderDuplicates();
   renderStats(entry);
   renderProgress(entry);
+  renderChars(entry);
+  renderNotes(entry);
   renderChart();
   renderShots();
   document.dispatchEvent(new CustomEvent("game-loaded", { detail: game }));
@@ -395,6 +428,74 @@ function renderStats(entry) {
   part("week").textContent = formatPlaytime(week);
   part("sessions").textContent = entry.sessions || "—";
   part("last").textContent = lastPlayed(entry.last_played) || "—";
+}
+
+function renderChars(entry) {
+  const total = entry.chars_read || 0;
+  part("chars-card").hidden = !total;
+  if (!total) {
+    return;
+  }
+  part("chars-total").textContent = total.toLocaleString();
+
+  // Speed only counts days that have characters, so time read before tracking
+  // was turned on doesn't drag it down.
+  const charsDaily = entry.chars_daily || {};
+  const daily = entry.daily || {};
+  let chars = 0;
+  let seconds = 0;
+  for (const [day, count] of Object.entries(charsDaily)) {
+    if (daily[day] > 0) {
+      chars += count;
+      seconds += daily[day];
+    }
+  }
+  const today = charsDaily[isoDay(new Date())] || 0;
+  part("chars-detail").textContent = [
+    seconds >= 600 && t("~{speed} per hour", { speed: Math.round(chars / (seconds / 3600)).toLocaleString() }),
+    today && t("{count} today", { count: today.toLocaleString() }),
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+}
+
+function noteDate(at) {
+  const date = new Date(at * 1000);
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${shortDate(date)} · ${time}`;
+}
+
+function renderNotes(entry) {
+  const notes = [...(entry.notes || [])].sort((a, b) => b.at - a.at);
+  part("note-count").textContent = notes.length ? String(notes.length) : "";
+  part("notes").replaceChildren(
+    ...notes.map((note) => {
+      const remove = el("button", { class: "btn danger small" });
+      confirmButton(remove, "Delete", () => call("remove_note", { key, at: note.at }));
+      return el(
+        "div",
+        { class: "note" },
+        el("div", { class: "note-head" }, el("span", { class: "muted small-text" }, noteDate(note.at)), remove),
+        el("div", { class: "note-text" }, document.createTextNode(note.text || "")),
+      );
+    }),
+  );
+}
+
+async function addNote() {
+  const box = part("note-text");
+  const text = box.value.trim();
+  if (!text) {
+    box.focus();
+    return;
+  }
+  part("note-save").disabled = true;
+  try {
+    await call("add_note", { key, text });
+    box.value = "";
+  } finally {
+    part("note-save").disabled = false;
+  }
 }
 
 function renderDuplicates() {

@@ -55,10 +55,21 @@ const TEMPLATE = `
 
   <div class="muted" data-id="summary"></div>
 
+  <div class="card" data-id="goals" hidden>
+    <div class="card-title">
+      <b>Goals</b>
+      <button class="link" data-id="edit-goals">Change…</button>
+    </div>
+    <div class="goal-list" data-id="goal-list"></div>
+  </div>
+
   <div class="card" data-id="activity" hidden>
     <div class="card-title">
       <b>Reading days</b>
-      <span class="muted small-text" data-id="streaks"></span>
+      <div class="row">
+        <span class="muted small-text" data-id="streaks"></span>
+        <button class="link" data-id="set-goals">Set a goal…</button>
+      </div>
     </div>
     <div data-id="heatmap"></div>
   </div>
@@ -99,6 +110,9 @@ function build(container) {
   part("filter").oninput = render;
   part("status").onchange = render;
   part("wishlist").onclick = () => show("wishlist");
+  const openGoals = () => show("settings", { tab: "general", focus: "goals" });
+  part("edit-goals").onclick = openGoals;
+  part("set-goals").onclick = openGoals;
 
   part("view-button").onclick = () => (part("view-list").hidden = !part("view-list").hidden);
   for (const item of part("view-list").children) {
@@ -131,6 +145,7 @@ async function load() {
   games = await call("get_library");
   render();
   renderActivity();
+  renderGoals();
 }
 
 function readingDays() {
@@ -204,6 +219,112 @@ function renderActivity() {
     .filter(Boolean)
     .join("  ·  ");
   drawHeatmap(part("heatmap"), days, milestones());
+}
+
+function secondsSince(prefix) {
+  let total = 0;
+  for (const game of games) {
+    for (const [day, seconds] of Object.entries(game.daily || {})) {
+      if (day.startsWith(prefix)) {
+        total += seconds;
+      }
+    }
+  }
+  return total;
+}
+
+function finishedIn(year) {
+  return games.filter(
+    (game) =>
+      game.status === "finished" &&
+      game.finished_at > 0 &&
+      new Date(game.finished_at * 1000).getFullYear() === year,
+  ).length;
+}
+
+// How far through the period we are, from 0 to 1.
+function elapsed(start, end) {
+  const now = Date.now();
+  return Math.min(1, Math.max(0, (now - start) / (end - start)));
+}
+
+function goalRow({ label, done, target, shown, pace }) {
+  const share = Math.min(1, done / target);
+  const reached = done >= target;
+  const expected = target * pace;
+  let note;
+  if (reached) {
+    note = t("Goal reached 🎉");
+  } else if (done >= expected) {
+    note = t("On track");
+  } else {
+    note = t("A bit behind");
+  }
+  return el(
+    "div",
+    { class: `goal ${reached ? "reached" : ""}` },
+    el(
+      "div",
+      { class: "goal-head" },
+      el("b", {}, label),
+      el("span", { class: "muted small-text" }, `${shown}  ·  ${Math.floor(share * 100)}%  ·  ${note}`),
+    ),
+    el("div", { class: "bar" }, el("i", { style: { width: `${share * 100}%` } })),
+  );
+}
+
+function renderGoals() {
+  const settings = store.settings;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const yearPace = elapsed(new Date(year, 0, 1), new Date(year + 1, 0, 1));
+  const monthPace = elapsed(new Date(year, now.getMonth(), 1), new Date(year, now.getMonth() + 1, 1));
+
+  const rows = [];
+  const yearHours = Number(settings.goal_hours_year) || 0;
+  if (yearHours > 0) {
+    const done = secondsSince(`${year}-`);
+    rows.push(
+      goalRow({
+        label: t("Hours read in {year}", { year }),
+        done: done / 3600,
+        target: yearHours,
+        shown: `${formatPlaytime(done)} / ${yearHours}h`,
+        pace: yearPace,
+      }),
+    );
+  }
+  const monthHours = Number(settings.goal_hours_month) || 0;
+  if (monthHours > 0) {
+    const done = secondsSince(`${year}-${month}-`);
+    rows.push(
+      goalRow({
+        label: t("Hours read this month"),
+        done: done / 3600,
+        target: monthHours,
+        shown: `${formatPlaytime(done)} / ${monthHours}h`,
+        pace: monthPace,
+      }),
+    );
+  }
+  const yearVns = Number(settings.goal_vns_year) || 0;
+  if (yearVns > 0) {
+    const done = finishedIn(year);
+    rows.push(
+      goalRow({
+        label: t("VNs finished in {year}", { year }),
+        done,
+        target: yearVns,
+        shown: `${done} / ${yearVns}`,
+        pace: yearPace,
+      }),
+    );
+  }
+
+  part("goals").hidden = !rows.length;
+  part("set-goals").hidden = rows.length > 0;
+  part("goal-list").replaceChildren(...rows);
 }
 
 function weekSeconds(daily) {

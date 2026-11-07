@@ -77,6 +77,10 @@ fn defaults() -> Map<String, Value> {
         "screenshot_dir": "",
         "locale_emulator_path": "",
         "ntlea_path": "",
+        "goal_hours_year": 0,
+        "goal_vns_year": 0,
+        "goal_hours_month": 0,
+        "chars_tracking": false,
     });
     match v {
         Value::Object(m) => m,
@@ -639,8 +643,13 @@ impl Config {
             _ => false,
         };
 
+        const SUMMED: [&str; 3] = ["playtime_seconds", "sessions", "chars_read"];
+        const COUNTERS: [&str; 3] = ["daily", "hourly", "chars_daily"];
         for (field, value) in &source {
-            if blank(target.get(field)) && field != "daily" && field != "hourly" {
+            let combined = SUMMED.contains(&field.as_str())
+                || COUNTERS.contains(&field.as_str())
+                || field == "notes";
+            if blank(target.get(field)) && !combined {
                 target.insert(field.clone(), value.clone());
             }
         }
@@ -649,15 +658,25 @@ impl Config {
                 target.insert("path".into(), path.clone());
             }
         }
-        for field in ["playtime_seconds", "sessions"] {
+        for field in SUMMED {
             target.insert(field.into(), json!(num(&target, field) + num(&source, field)));
+        }
+        let mut notes: Vec<Value> = [&target, &source]
+            .iter()
+            .filter_map(|e| e.get("notes").and_then(Value::as_array))
+            .flatten()
+            .cloned()
+            .collect();
+        if !notes.is_empty() {
+            notes.sort_by_key(|n| n.get("at").and_then(Value::as_i64).unwrap_or(0));
+            target.insert("notes".into(), Value::Array(notes));
         }
         target.insert(
             "last_played".into(),
             json!(num(&target, "last_played").max(num(&source, "last_played"))),
         );
 
-        for counter in ["daily", "hourly"] {
+        for counter in COUNTERS {
             for (slot, seconds) in source.get(counter).and_then(Value::as_object).into_iter().flatten() {
                 add_to_counter(&mut target, counter, slot.clone(), seconds.as_i64().unwrap_or(0));
             }
@@ -698,6 +717,55 @@ impl Config {
         }
         entry.insert("last_played".into(), json!(now()));
         self.save_game(key);
+    }
+
+    /// Adds characters read (from a text hooker) to a VN that's already in the library.
+    pub fn add_chars(&mut self, key: &str, chars: i64) {
+        if chars <= 0 {
+            return;
+        }
+        let Some(entry) = self.games.get_mut(key) else {
+            return;
+        };
+        let total = entry.get("chars_read").and_then(Value::as_i64).unwrap_or(0);
+        entry.insert("chars_read".into(), json!(total + chars));
+        add_to_counter(entry, "chars_daily", today(), chars);
+        self.save_game(key);
+    }
+
+    /// Adds a note to a VN and returns its id (its timestamp, unique within the VN).
+    pub fn add_note(&mut self, key: &str, text: &str) -> Option<i64> {
+        let entry = self.games.get_mut(key)?;
+        let mut notes = entry
+            .get("notes")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let last = notes
+            .iter()
+            .filter_map(|n| n.get("at").and_then(Value::as_i64))
+            .max()
+            .unwrap_or(0);
+        let at = now().max(last + 1);
+        notes.push(json!({ "at": at, "text": text }));
+        entry.insert("notes".into(), Value::Array(notes));
+        self.save_game(key);
+        Some(at)
+    }
+
+    pub fn remove_note(&mut self, key: &str, at: i64) -> bool {
+        let removed = match self.games.get_mut(key).and_then(|e| e.get_mut("notes")) {
+            Some(Value::Array(notes)) => {
+                let before = notes.len();
+                notes.retain(|n| n.get("at").and_then(Value::as_i64) != Some(at));
+                notes.len() != before
+            }
+            _ => false,
+        };
+        if removed {
+            self.save_game(key);
+        }
+        removed
     }
 
     pub fn start_session(&mut self, key: &str) {
@@ -777,6 +845,41 @@ mod tests {
 
     fn add(cfg: &mut Config, key: &str, fields: Value) {
         cfg.set_game(key, fields.as_object().cloned().unwrap_or_default());
+    }
+
+    #[test]
+    fn notes_get_unique_ids_and_can_be_removed() {
+        let mut cfg = library("notes");
+        add(&mut cfg, "a.exe", json!({ "title": "A" }));
+        let first = cfg.add_note("a.exe", "first").unwrap();
+        let second = cfg.add_note("a.exe", "second").unwrap();
+        assert!(second > first);
+        assert!(cfg.add_note("missing.exe", "nope").is_none());
+        assert!(cfg.remove_note("a.exe", first));
+        assert!(!cfg.remove_note("a.exe", first));
+        let notes = cfg.game("a.exe")["notes"].as_array().cloned().unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0]["text"], "second");
+    }
+
+    #[test]
+    fn characters_add_up_and_survive_a_merge() {
+        let mut cfg = library("chars");
+        add(&mut cfg, "a.exe", json!({ "title": "A", "playtime_seconds": 60 }));
+        add(&mut cfg, "b.exe", json!({ "title": "B", "playtime_seconds": 30 }));
+        cfg.add_chars("a.exe", 100);
+        cfg.add_chars("a.exe", 50);
+        cfg.add_chars("b.exe", 10);
+        cfg.add_chars("missing.exe", 10);
+        assert!(cfg.all_games().get("missing.exe").is_none());
+        cfg.add_note("b.exe", "from b");
+
+        cfg.merge_games("b.exe", "a.exe");
+        let merged = cfg.game("a.exe");
+        assert_eq!(merged["chars_read"], 160);
+        assert_eq!(merged["chars_daily"][today()], 160);
+        assert_eq!(merged["playtime_seconds"], 90);
+        assert_eq!(merged["notes"][0]["text"], "from b");
     }
 
     #[test]

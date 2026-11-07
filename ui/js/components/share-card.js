@@ -176,7 +176,7 @@ function drawHeader(ctx, data, p, icon) {
   ctx.font = font(22);
   ctx.fillText(data.subtitle, PAD, 104);
 
-  const brand = "Shiori RPC";
+  const brand = "Yomi";
   ctx.font = font(17, 600);
   const brandX = WIDTH - PAD - ctx.measureText(brand).width;
   ctx.textBaseline = "middle";

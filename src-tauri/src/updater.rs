@@ -7,19 +7,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-pub const REPO: &str = "lennmoe/shiori";
+pub const REPO: &str = crate::branding::REPO;
+/// Name of the portable exe uploaded to each release.
+pub const EXE_NAME: &str = "yomi.exe";
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
-fn http() -> reqwest::blocking::Client {
+fn http() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
-        .user_agent(format!("ShioriRPC/{CURRENT}"))
+        .user_agent(format!("Yomi/{CURRENT}"))
         .timeout(Duration::from_secs(10))
         .build()
-        .expect("http client")
+        .map_err(|e| e.to_string())
 }
 
 fn get_json(url: &str) -> Result<Value, String> {
-    http()
+    http()?
         .get(url)
         .header("Accept", "application/vnd.github+json")
         .send()
@@ -66,6 +68,9 @@ pub struct Release {
 }
 
 pub fn find_update() -> Result<Option<Release>, String> {
+    if crate::branding::repo_is_placeholder() {
+        return Ok(None);
+    }
     let data = get_json(&format!(
         "https://api.github.com/repos/{REPO}/releases/latest"
     ))?;
@@ -87,24 +92,41 @@ pub fn find_update() -> Result<Option<Release>, String> {
     };
 
     let digest = asset["digest"].as_str().unwrap_or("");
+    let sha256 = digest.strip_prefix("sha256:").unwrap_or("").to_lowercase();
+    let url = asset["browser_download_url"].as_str().unwrap_or("");
+    let size = asset["size"].as_u64().unwrap_or(0);
+    // Only offer updates we can verify: a SHA-256 from GitHub, a known size,
+    // and a download that comes from this repository's own releases.
+    if !is_sha256(&sha256) || size == 0 || !is_release_url(url) {
+        return Ok(None);
+    }
     Ok(Some(Release {
         version: tag.trim_start_matches(['v', 'V']).to_string(),
-        url: asset["browser_download_url"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        size: asset["size"].as_u64().unwrap_or(0),
-        sha256: digest.strip_prefix("sha256:").unwrap_or("").to_lowercase(),
+        url: url.to_string(),
+        size,
+        sha256,
         notes: data["body"].as_str().unwrap_or("").trim().to_string(),
         page: data["html_url"].as_str().unwrap_or("").to_string(),
     }))
+}
+
+fn is_sha256(hash: &str) -> bool {
+    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn is_release_url(url: &str) -> bool {
+    let prefix = format!("https://github.com/{REPO}/releases/download/");
+    url.len() > prefix.len()
+        && url
+            .get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(&prefix))
 }
 
 fn pick_asset(names: &[&str]) -> Option<usize> {
     let lower: Vec<String> = names.iter().map(|name| name.to_lowercase()).collect();
     lower
         .iter()
-        .position(|name| name == "shiori.exe")
+        .position(|name| name == EXE_NAME)
         .or_else(|| {
             lower
                 .iter()
@@ -237,7 +259,7 @@ pub fn sync_installed_version() {
     use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
 
     let Ok(key) = winreg::RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(
-        r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Shiori RPC",
+        r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Yomi",
         KEY_READ | KEY_SET_VALUE,
     ) else {
         return;
@@ -251,8 +273,11 @@ pub fn sync_installed_version() {
 }
 
 pub fn download(release: &Release, dest: &Path) -> Result<PathBuf, String> {
+    if !is_sha256(&release.sha256) || !is_release_url(&release.url) {
+        return Err("this update can't be verified, so it wasn't downloaded".into());
+    }
     let bytes = reqwest::blocking::Client::builder()
-        .user_agent(format!("ShioriRPC/{CURRENT}"))
+        .user_agent(format!("Yomi/{CURRENT}"))
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|e| e.to_string())?
@@ -262,13 +287,14 @@ pub fn download(release: &Release, dest: &Path) -> Result<PathBuf, String> {
         .and_then(|r| r.bytes())
         .map_err(|e| e.to_string())?;
 
-    let wrong_size = release.size > 0 && bytes.len() as u64 != release.size;
+    let wrong_size = bytes.len() as u64 != release.size;
     let hash: String = Sha256::digest(&bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    let wrong_hash = !release.sha256.is_empty() && hash != release.sha256;
-    if wrong_size || wrong_hash {
+    let wrong_hash = hash != release.sha256;
+    let not_a_program = !bytes.starts_with(b"MZ");
+    if wrong_size || wrong_hash || not_a_program {
         return Err("the downloaded file is incomplete or corrupted".into());
     }
 
@@ -304,6 +330,9 @@ pub struct Notes {
 }
 
 pub fn release_notes() -> Result<Vec<Notes>, String> {
+    if crate::branding::repo_is_placeholder() {
+        return Ok(Vec::new());
+    }
     let data = get_json(&format!(
         "https://api.github.com/repos/{REPO}/releases?per_page=30"
     ))?;
@@ -351,32 +380,46 @@ mod tests {
     }
 
     #[test]
+    fn only_trusts_real_checksums_and_own_release_urls() {
+        assert!(is_sha256(&"a".repeat(64)));
+        assert!(!is_sha256(""));
+        assert!(!is_sha256(&"g".repeat(64)));
+        assert!(!is_sha256(&"a".repeat(63)));
+        let good = format!("https://github.com/{REPO}/releases/download/v1.0.0/yomi.exe");
+        assert!(is_release_url(&good));
+        assert!(!is_release_url(&format!("https://github.com/{REPO}/releases/download/")));
+        assert!(!is_release_url("https://example.com/yomi.exe"));
+        assert!(!is_release_url("https://github.com/someone-else/yomi/releases/download/v1/yomi.exe"));
+        assert!(!is_release_url("https://githüb.com/x"));
+    }
+
+    #[test]
     fn never_updates_from_the_installer() {
-        let setup = "shiori_setup.exe";
-        assert_eq!(pick_asset(&[setup, "shiori.exe"]), Some(1));
+        let setup = "yomi_setup.exe";
+        assert_eq!(pick_asset(&[setup, "yomi.exe"]), Some(1));
         assert_eq!(pick_asset(&[setup, "other.exe"]), Some(1));
         assert_eq!(pick_asset(&[setup]), None);
     }
 
     #[test]
     fn recognises_what_a_failed_update_left_behind() {
-        assert_eq!(base_stem("shiori.new.new"), "shiori");
-        assert_eq!(base_stem("shiori"), "shiori");
-        assert!(is_leftover("shiori.new.exe", "shiori"));
-        assert!(is_leftover("SHIORI.new.new.exe", "shiori"));
-        assert!(is_leftover("shiori.old.exe", "shiori"));
-        assert!(is_leftover("shiori.new.exe.part", "shiori"));
-        assert!(!is_leftover("shiori.exe", "shiori"));
-        assert!(!is_leftover("shiori.backup.exe", "shiori"));
-        assert!(!is_leftover("other.new.exe", "shiori"));
+        assert_eq!(base_stem("yomi.new.new"), "yomi");
+        assert_eq!(base_stem("yomi"), "yomi");
+        assert!(is_leftover("yomi.new.exe", "yomi"));
+        assert!(is_leftover("YOMI.new.new.exe", "yomi"));
+        assert!(is_leftover("yomi.old.exe", "yomi"));
+        assert!(is_leftover("yomi.new.exe.part", "yomi"));
+        assert!(!is_leftover("yomi.exe", "yomi"));
+        assert!(!is_leftover("yomi.backup.exe", "yomi"));
+        assert!(!is_leftover("other.new.exe", "yomi"));
     }
 
     #[test]
     fn swaps_the_exe_even_in_a_non_ascii_folder() {
-        let dir = std::env::temp_dir().join(format!("shiori-swap-é更新-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("yomi-swap-é更新-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        let target = dir.join("shiori.exe");
+        let target = dir.join("yomi.exe");
         let staged = staging_path(&target);
         fs::write(&target, "old").unwrap();
         fs::write(&staged, "new").unwrap();

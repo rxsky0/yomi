@@ -17,7 +17,7 @@ use zip::ZipArchive;
 use crate::mascot::neighbours;
 use crate::state::Shared;
 
-const USER_AGENT: &str = concat!("ShioriRPC/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("Yomi/", env!("CARGO_PKG_VERSION"));
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(3600);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const CHUNK: usize = 64 * 1024;

@@ -28,6 +28,9 @@ function logo() {
 }
 
 export function discordButton({ small = false, label = "Join the Discord" } = {}) {
+  if (!DISCORD_INVITE) {
+    return document.createDocumentFragment();
+  }
   return el(
     "button",
     {

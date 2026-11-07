@@ -11,10 +11,12 @@ use crate::mascot::{self, AUDIO_EXTS, BUILT_IN, BUILT_IN_ID, IMAGE_EXTS, VOICE_E
 use crate::personalities;
 use crate::state::Shared;
 
-pub const EXTENSION: &str = "shiorimascot";
+pub const EXTENSION: &str = "yomimascot";
+/// Packs shared from the original Shiori app open too.
+const LEGACY_EXTENSION: &str = "shiorimascot";
 const FORMAT: i64 = 1;
 const MANIFEST: &str = "mascot.json";
-const NOT_A_PACK: &str = "That file isn't a Shiori mascot.";
+const NOT_A_PACK: &str = "That file isn't a Yomi mascot.";
 
 const MAX_MANIFEST: u64 = 256 * 1024;
 const MAX_IMAGE: u64 = 40 * 1024 * 1024;
@@ -27,7 +29,8 @@ const TEXT_LINES: [&str; 6] = ["start", "stop", "idle", "back", "section", "scre
 const LIST_LINES: [&str; 2] = ["pokes", "chatter"];
 
 pub fn is_pack(path: &Path) -> bool {
-    path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case(EXTENSION))
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(EXTENSION) || ext.eq_ignore_ascii_case(LEGACY_EXTENSION))
 }
 
 pub fn export(shared: &Shared, id: &str, dest: &Path) -> Result<(), String> {
@@ -97,7 +100,7 @@ pub fn import(shared: &Shared, source: &Path) -> Result<String, String> {
         .map_err(|_| NOT_A_PACK.to_string())?;
     match manifest["format"].as_i64() {
         Some(format) if format > FORMAT => {
-            return Err("That mascot was made with a newer Shiori RPC. Update the app first.".into())
+            return Err("That mascot was made with a newer Yomi. Update the app first.".into())
         }
         Some(_) => {}
         None => return Err(NOT_A_PACK.into()),
@@ -270,6 +273,7 @@ mod tests {
     #[test]
     fn packs_are_known_by_their_extension() {
         assert!(is_pack(Path::new("C:\\a\\Kud.SHIORIMASCOT")));
+        assert!(is_pack(Path::new("C:\\a\\Kud.yomimascot")));
         assert!(!is_pack(Path::new("C:\\a\\kud.png")));
     }
 }

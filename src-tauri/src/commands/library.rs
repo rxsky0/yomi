@@ -306,7 +306,7 @@ pub fn create_shortcut(shared: SharedState, key: String) -> Result<String, Launc
         target: &app_exe,
         arguments: &format!("--play \"{key}\""),
         icon: &game_exe,
-        description: &format!("Play {name} with Shiori RPC"),
+        description: &format!("Play {name} with Yomi"),
     };
     shell::create_shortcut(&dest, &shortcut).map_err(LaunchError::Failed)?;
     Ok(dest.to_string_lossy().to_string())
@@ -369,4 +369,34 @@ pub async fn get_wishlist(shared: SharedState<'_>) -> Result<Value, String> {
         Ok(json!({ "wishlist": wishlist, "in_library": in_library }))
     })
     .await
+}
+
+const MAX_NOTE_CHARS: usize = 4000;
+
+#[tauri::command(async)]
+pub fn add_note(shared: SharedState, key: String, text: String) -> Result<i64, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("The note is empty.".into());
+    }
+    if text.chars().count() > MAX_NOTE_CHARS {
+        return Err(format!("Notes can be up to {MAX_NOTE_CHARS} characters."));
+    }
+    let at = shared
+        .config
+        .lock()
+        .unwrap()
+        .add_note(&key, text)
+        .ok_or("This VN isn't in the library anymore.")?;
+    shared.emit("library-changed", json!({ "key": key }));
+    Ok(at)
+}
+
+#[tauri::command(async)]
+pub fn remove_note(shared: SharedState, key: String, at: i64) -> bool {
+    let removed = shared.config.lock().unwrap().remove_note(&key, at);
+    if removed {
+        shared.emit("library-changed", json!({ "key": key }));
+    }
+    removed
 }

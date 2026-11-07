@@ -27,7 +27,7 @@ export async function offerUpdate({ quiet = true } = {}) {
     body: el(
       "p",
       { class: "muted" },
-      t("Shiori RPC {latest} is out (you have {version}). Download it and restart now?", {
+      t("Yomi {latest} is out (you have {version}). Download it and restart now?", {
         latest: release.version,
         version: store.version,
       }),

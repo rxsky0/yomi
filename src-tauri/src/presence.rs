@@ -6,7 +6,7 @@ use crate::engine::format_playtime;
 use crate::lang;
 use crate::state::Snapshot;
 
-pub const APP_ICON: &str = "https://raw.githubusercontent.com/lennmoe/shiori/main/ui/assets/app_icon.png";
+pub const APP_ICON: &str = crate::branding::APP_ICON;
 
 pub type Vars = Vec<(&'static str, String)>;
 

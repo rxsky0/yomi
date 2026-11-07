@@ -1,7 +1,9 @@
-export const REPO = "https://github.com/lennmoe/shiori";
+// Set with `npm run set-repo -- your-name/yomi` (also updates src-tauri/src/branding.rs).
+export const REPO = "https://github.com/YOUR_GITHUB_USERNAME/yomi";
 export const RELEASES_PAGE = `${REPO}/releases`;
 
-export const DISCORD_INVITE = "https://discord.gg/cDTUQFq4Hn";
+// Invite link to your own Discord server. Leave empty to hide the "Join the Discord" buttons.
+export const DISCORD_INVITE = "";
 
 function windowsVersion() {
   return /Windows NT 10/.test(navigator.userAgent) ? "Windows 10/11" : "Windows";
@@ -24,7 +26,7 @@ export function bugReportUrl(version) {
     "",
     "",
     "---",
-    `Shiori RPC ${version} · ${windowsVersion()}`,
+    `Yomi ${version} · ${windowsVersion()}`,
   ].join("\n");
 
   return issueUrl({ title: "Bug: ", body, label: "bug" });
@@ -39,7 +41,7 @@ export function suggestionUrl(version) {
     "",
     "",
     "---",
-    `Shiori RPC ${version}`,
+    `Yomi ${version}`,
   ].join("\n");
 
   return issueUrl({ title: "Idea: ", body, label: "enhancement" });

@@ -2,7 +2,7 @@ use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
 use winreg::RegKey;
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const VALUE_NAME: &str = "Shiori RPC";
+const VALUE_NAME: &str = "Yomi";
 const VALUE_NAME_BEFORE_RENAME: &str = "VisualNovelRPC";
 
 pub fn is_enabled() -> bool {

@@ -722,7 +722,7 @@ impl Engine {
                 details: reading.into(),
                 large_image: asset,
                 large_text: "Visual Novel".into(),
-                small_text: "via Shiori RPC".into(),
+                small_text: "via Yomi".into(),
                 start,
                 ..Default::default()
             });
@@ -787,13 +787,15 @@ impl Engine {
             state,
             large_image,
             large_text: hover,
-            small_text: "via Shiori RPC".into(),
+            small_text: "via Yomi".into(),
             start,
             buttons,
             ..Default::default()
         };
-        let custom = cfg.get("presence_custom");
-        if snap.privacy != "partial" && presence::enabled(custom) {
+        let custom = cfg
+            .get("presence_custom")
+            .filter(|custom| presence::enabled(Some(*custom)));
+        if let (Some(custom), true) = (custom, snap.privacy != "partial") {
             let vars = presence::vars(
                 snap,
                 &cfg.game(&snap.key),
@@ -802,7 +804,7 @@ impl Engine {
             );
             presence::apply(
                 &mut activity,
-                custom.unwrap(),
+                custom,
                 &vars,
                 snap.session_start,
                 snap.playtime_seconds,

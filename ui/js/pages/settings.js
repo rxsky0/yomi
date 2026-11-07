@@ -74,7 +74,7 @@ function showPage(params = {}) {
 }
 
 function buildFooter() {
-  part("version").textContent = `Shiori RPC ${store.version}`;
+  part("version").textContent = `Yomi ${store.version}`;
 
   const check = part("check-update");
   check.onclick = async () => {
@@ -185,6 +185,8 @@ function generalTab() {
     ...languageSection(),
     ...coversSection(),
     ...vndbSection(),
+    ...goalsSection(),
+    ...charsSection(),
     ...screenshotsSection(),
     ...localeSection(),
     ...appSection(),
@@ -457,6 +459,62 @@ function appSection() {
   ];
 }
 
+function goalsSection() {
+  return [
+    section("Reading goals", "goals"),
+    hint("Shown above the reading calendar in the Library. Leave a goal at 0 to hide it."),
+    numberField("goal_hours_year", "Hours to read this year", { min: 0, max: 10000, fallback: 0 }),
+    numberField("goal_hours_month", "Hours to read this month", { min: 0, max: 744, fallback: 0 }),
+    numberField("goal_vns_year", "VNs to finish this year", { min: 0, max: 1000, fallback: 0 }),
+  ];
+}
+
+function charsSection() {
+  return [
+    section("Characters read", "chars"),
+    setting(
+      "chars_tracking",
+      "Count characters from a text hooker",
+      "Textractor (with its Copy to Clipboard extension), LunaTranslator and similar tools copy each line. " +
+        "Lines copied while the VN is the active window are counted on its Library page. Nothing is saved but the count.",
+    ),
+  ];
+}
+
+const READING_FORMATS = {
+  csv: { label: "CSV: one line per VN", extension: "csv" },
+  csv_daily: { label: "CSV: one line per VN per day", extension: "csv" },
+  json: { label: "JSON: everything, with notes", extension: "json" },
+};
+
+function readingExport() {
+  const select = el(
+    "select",
+    {},
+    ...Object.entries(READING_FORMATS).map(([value, { label }]) => el("option", { value }, label)),
+  );
+  const button = el("button", { class: "btn secondary" }, "Export reading history…");
+  button.onclick = async () => {
+    const format = select.value;
+    const { extension } = READING_FORMATS[format];
+    const today = new Date().toISOString().slice(0, 10);
+    const path = await pickSaveFile({
+      title: "Export reading history",
+      defaultPath: `yomi-reading-${format === "csv_daily" ? "days-" : ""}${today}.${extension}`,
+      filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
+    });
+    if (!path) {
+      return;
+    }
+    const count = await call("export_reading", { path, format });
+    toast(t("Exported {vns}", { vns: plural(count, "VN") }));
+  };
+  return [
+    el("div", { class: "row" }, select, button),
+    hint("For spreadsheets or your own scripts. Doesn't include your settings or VNDB token."),
+  ];
+}
+
 function dataSection() {
   const exportButton = el("button", { class: "btn secondary", onclick: exportData }, "Export…");
   const importButton = el("button", { class: "btn secondary", onclick: importData }, "Import…");
@@ -468,6 +526,7 @@ function dataSection() {
         "another PC or keep a copy. It includes your VNDB token: don't share it.",
     ),
     el("div", { class: "row" }, exportButton, importButton),
+    ...readingExport(),
   ];
 }
 
@@ -475,7 +534,7 @@ async function exportData() {
   const path = await pickSaveFile({
     title: "Export data",
     defaultPath: await invoke("backup_default_name"),
-    filters: [{ name: "Shiori RPC backup", extensions: ["zip"] }],
+    filters: [{ name: "Yomi backup", extensions: ["zip"] }],
   });
   if (!path) {
     return;
@@ -487,7 +546,7 @@ async function exportData() {
 async function importData() {
   const path = await pickFile({
     title: "Import data",
-    filters: [{ name: "Shiori RPC backup", extensions: ["zip"] }],
+    filters: [{ name: "Yomi backup", extensions: ["zip"] }],
   });
   if (!path) {
     return;
