@@ -1,0 +1,12 @@
+{
+  "name": "CoinRush",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "CoinRush": {
+        "$path": "src/CoinRush.server.luau"
+      }
+    }
+  }
+}
